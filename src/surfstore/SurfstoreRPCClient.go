@@ -29,19 +29,79 @@ func (surfClient *RPCClient) GetBlock(blockHash string, block *Block) error {
 }
 
 func (surfClient *RPCClient) PutBlock(block Block, succ *bool) error {
-	panic("todo")
+	//panic("todo")
+
+	conn, e := rpc.DialHTTP("tcp", surfClient.ServerAddr)
+	if e != nil {
+		return e
+	}
+
+	// perform the call
+	e = conn.Call("Surfstore.PutBlock", block, succ)
+	if e != nil {
+		conn.Close()
+		return e
+	}
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) HasBlocks(blockHashesIn []string, blockHashesOut *[]string) error {
-	panic("todo")
+	//panic("todo")
+
+	conn, e := rpc.DialHTTP("tcp", surfClient.ServerAddr)
+	if e != nil {
+		return e
+	}
+
+	// perform the call
+	e = conn.Call("Surfstore.HasBlocks", blockHashesIn, blockHashesOut)
+	if e != nil {
+		conn.Close()
+		return e
+	}
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) GetFileInfoMap(succ *bool, serverFileInfoMap *map[string]FileMetaData) error {
-	panic("todo")
+	//panic("todo")
+
+	conn, e := rpc.DialHTTP("tcp", surfClient.ServerAddr)
+	if e != nil {
+		return e
+	}
+
+	// perform the call
+	e = conn.Call("Surfstore.GeFileInfoMap", succ, serverFileInfoMap)
+	if e != nil {
+		conn.Close()
+		return e
+	}
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) UpdateFile(fileMetaData *FileMetaData, latestVersion *int) error {
-	panic("todo")
+	//panic("todo")
+
+	conn, e := rpc.DialHTTP("tcp", surfClient.ServerAddr)
+	if e != nil {
+		return e
+	}
+
+	// perform the call
+	e = conn.Call("Surfstore.UpdateFile", fileMetaData, latestVersion)
+	if e != nil {
+		conn.Close()
+		return e
+	}
+
+	// close the connection
+	return conn.Close()
 }
 
 var _ Surfstore = new(RPCClient)

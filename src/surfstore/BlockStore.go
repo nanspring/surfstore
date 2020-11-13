@@ -11,8 +11,8 @@ type BlockStore struct {
 
 func (bs *BlockStore) GetBlock(blockHash string, blockData *Block) error {
 	//panic("todo")
-	if val, ok := bs.BlockMap[blockHash] ; ok {
-		blockData = bs.BlockMap[blockHash]
+	if block, ok := bs.BlockMap[blockHash] ; ok {
+		blockData = &block
 		return nil
 	}else{
 		return errors.New("Block does not exist")
@@ -30,7 +30,7 @@ func (bs *BlockStore) PutBlock(block Block, succ *bool) error {
 
 func (bs *BlockStore) HasBlocks(blockHashesIn []string, blockHashesOut *[]string) error {
 	//panic("todo")
-
+	return nil
 }
 
 // This line guarantees all method for BlockStore are implemented
