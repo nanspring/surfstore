@@ -18,9 +18,9 @@ Implement the logic for a client syncing with the server here.
 */
 func ClientSync(client RPCClient) {
 	//panic("todo")
+	indexPath := client.BaseDir + "/index.txt"
 	indexMap := make(map[string]string)
 	GetIndexMap(&indexMap, indexPath) // read index.txt to map
-	indexPath := client.BaseDir + "/index.txt"
 
 	//create index.txt if not exist
 	CreateIndex(client)
@@ -29,7 +29,7 @@ func ClientSync(client RPCClient) {
 	fileNameUpdate, newFileName := ScanCheckLocalIndex(indexMap,client)
 	log.Println("fileNameUpdate: ",fileNameUpdate," newfilename: ",newFileName)
 
-	
+
 	serverFileInfoMap := new(map[string]FileMetaData) //new return a pointer
 	succ := new(bool)
 	client.GetFileInfoMap(succ, serverFileInfoMap)
