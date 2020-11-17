@@ -11,6 +11,7 @@ import (
 	"strings"
 	"encoding/hex"
 	"strconv"
+	"reflect"
 )
 
 /*
@@ -19,32 +20,43 @@ Implement the logic for a client syncing with the server here.
 func ClientSync(client RPCClient) {
 	//panic("todo")
 	indexPath := client.BaseDir + "/index.txt"
-	indexMap := make(map[string]string)
-	GetIndexMap(&indexMap, indexPath) // read index.txt to map
+	localIndexMap := make(map[string]FileMetaData)
 
 	//create index.txt if not exist
 	CreateIndex(client)
+	GetIndexMap(&localIndexMap, indexPath) // read index.txt to map
 
-	//scan local file, check for any file modification or new file and rewrite index.txt
-	fileNameUpdate, newFileName := ScanCheckLocalIndex(indexMap,client)
-	log.Println("fileNameUpdate: ",fileNameUpdate," newfilename: ",newFileName)
+	//scan local file, check for any file modification or new file 
+	fileNameUpdate := ScanCheckLocalIndex(localIndexMap,client)
+	log.Println("fileNameUpdate: ",fileNameUpdate)
 
 
 	serverFileInfoMap := new(map[string]FileMetaData) //new return a pointer
 	succ := new(bool)
-	client.GetFileInfoMap(succ, serverFileInfoMap)
+	client.GetFileInfoMap(succ, serverFileInfoMap) // rpc call, get index map from server
 	PrintMetaMap(*serverFileInfoMap)
 
 	//=========TODO=================
 
-	// check with remote server
+	// Compare local index with remote server index
+	// for file_name, file_meta_data := range *serverFileInfoMap {
+	// 	if val, ok := localIndexMap[file_name]; !ok { //if file does not exist in local index, server has new file :)
+			//download file block from server
+			//hashlist := file_meta_data.BlockHashList
+
+			//====TODO====
+			//==download block from server by looping hashlist
+			//==reorganized block into file into local dir
+			//==update localIndexMap of the newly downloaded file
+	// 	}
+	// }
 	// download new file from server that does not exist in client
 	// client upload new file to server, if fail, delete filename in fileNameUpdate or newFileName
 
 	//==============================
 
-	//Update the hashlist of corresponding file 
-	UpdateIndexFile(indexPath, indexMap, fileNameUpdate, newFileName)
+	//Update the hashlist of corresponding file, rewrite index.txt
+	UpdateIndexFile(indexPath, localIndexMap, fileNameUpdate)
 	
 	
 
@@ -72,7 +84,7 @@ func CreateIndex(client RPCClient){
 3. compare with local index file
 4. return fileNames that need update
 */
-func ScanCheckLocalIndex(indexMap map[string]string, client RPCClient) (fileNameUpdate []string, newFileName []string){
+func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fileNameUpdate []string){
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
@@ -96,19 +108,21 @@ func ScanCheckLocalIndex(indexMap map[string]string, client RPCClient) (fileName
 		current_hashlist := GetFileHashList(path,client.BlockSize)
 		
 		//check whether filename exist in index.txt
-		if hashlist, ok := indexMap[path]; ok {
+		if fmdata, ok := indexMap[path]; ok {
 			
 			
 			//if different, update indexMap and append filename that need to be changed
-			if hashlist != current_hashlist{ 
+			if !assertEq(fmdata.BlockHashList,current_hashlist){ 
 				log.Println("hashlist different")
-				indexMap[path] = current_hashlist
+				fmdata.BlockHashList = current_hashlist
+				fmdata.Version = fmdata.Version+1 //update version+1
+				indexMap[path] = fmdata
 				fileNameUpdate = append(fileNameUpdate,path)
 			}
 
 		}else{ // if not exist in index.txt, it is a new file, append new line to index.txt
-			newFileName = append(newFileName,path)
-			indexMap[path] = current_hashlist
+			fileNameUpdate = append(fileNameUpdate,path)
+			indexMap[path] = FileMetaData{path, 1, current_hashlist} 
 			
 		}
 		
@@ -120,15 +134,15 @@ func ScanCheckLocalIndex(indexMap map[string]string, client RPCClient) (fileName
 	
 	
 
-	return fileNameUpdate, newFileName
+	return fileNameUpdate
 }
 
 /*
 Update hashlist of files in index.txt that need to be changed
 Append new file in index.txt created by client
 */
-func UpdateIndexFile(indexPath string, indexMap map[string]string, fileUpdate []string, newFile []string){
-	if len(fileUpdate) == 0 && len(newFile) == 0{
+func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpdate []string){
+	if len(fileUpdate) == 0{
 		return
 	}
 
@@ -146,12 +160,9 @@ func UpdateIndexFile(indexPath string, indexMap map[string]string, fileUpdate []
 		for i, line := range lines{ //check whether each line contains file that need updates
 			for _,fileName := range fileUpdate{
 				if strings.Contains(line, fileName){
-					temp := strings.Split(line,",") //split the line
-					version, _:= strconv.Atoi(temp[1])
-					temp[1] = strconv.Itoa(version+1) //update version+1
-					log.Println("version: ",temp[1])
-					temp[2] = indexMap[temp[0]] //update the hashlist
-					lines[i] = strings.Join(temp,",") //rejoin the string
+					fmdata := indexMap[fileName] 
+					data := []string {fmdata.Filename,strconv.Itoa(fmdata.Version),strings.Join(fmdata.BlockHashList," ")}
+					lines[i] = strings.Join(data,",") //rejoin the string
 			}
 		}
 	}
@@ -164,28 +175,13 @@ func UpdateIndexFile(indexPath string, indexMap map[string]string, fileUpdate []
 		log.Println("write index file error: ",err)
 	}
 
-	if len(newFile) != 0 {
-		log.Println("newfile: ",newFile)
-		f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_WRONLY, 0644) 
-		defer f.Close()
-		for _, newFileName := range newFile{
-			text := newFileName + "," + "1" + "," + indexMap[newFileName]
-			_, err = f.WriteString(text) 
-			if err != nil {
-				log.Println("Append line to index error: ",err)
-				return
-			}
-		}
-		
-	}
 	
 }
 
 /*
 calculate file hashlist
 */
-func GetFileHashList(path string, blockSize int) (hashList string){
-	log.Println("path: ",path)
+func GetFileHashList(path string, blockSize int) (hashList []string){
 	byteFile, err := ioutil.ReadFile(path) //this return a byte array
 	if err != nil{
 		log.Println("error reading file: ",path,err)
@@ -203,7 +199,7 @@ func GetFileHashList(path string, blockSize int) (hashList string){
 			block, byteFile = byteFile[:blockSize], byteFile[blockSize:]
 		}
 		
-		hashList += Hash256(block)+" "
+		hashList = append(hashList,Hash256(block))
 	}
 
 	return hashList
@@ -219,7 +215,7 @@ func Hash256(block []byte) (hash_code string){
 /*
 Read index.txt to a map
 */
-func GetIndexMap(indexMap *map[string]string, indexPath string){
+func GetIndexMap(indexMap *map[string]FileMetaData, indexPath string){
 	file, err := os.Open(indexPath)
 	if err != nil {
 		log.Println("info file read error: ",err)
@@ -227,10 +223,10 @@ func GetIndexMap(indexMap *map[string]string, indexPath string){
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan(){
-		line := strings.Split(scanner.Text(),",")
-		log.Println("line: ",line)
-		log.Println("indexmap: ",(*indexMap)[line[0]])
-		(*indexMap)[line[0]] = line[2] //line[0] is "filename", line[1] is "hashlist"
+		line := strings.Split(scanner.Text(),",") //line[0] is "filename", line[1] is version, line[2] is "hashlist"
+		version,_ := strconv.Atoi(line[1])
+		fmdata := FileMetaData{line[0],version,strings.Split(line[2]," ")}
+		(*indexMap)[line[0]] = fmdata 
 	}
 	if err := scanner.Err(); err != nil{
 		log.Println("infomap scann error: ",err)
@@ -251,4 +247,8 @@ func PrintMetaMap(metaMap map[string]FileMetaData) {
 
 	fmt.Println("---------END PRINT MAP--------")
 
+}
+
+func assertEq(test []string, ans []string) bool {
+    return reflect.DeepEqual(test, ans)
 }
