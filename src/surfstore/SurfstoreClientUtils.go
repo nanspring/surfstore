@@ -56,7 +56,7 @@ func ClientSync(client RPCClient) {
 		}
 	}
 
-	// client upload new file to server, if fail, delete filename in fileNameUpdate or newFileName
+	// client upload new file to server, if fail, download the file from server and update indexMap
 	for name,_ := range fileNameUpdate{
 		var latestVersion = new(int)
 		local_fmData := localIndexMap[name]
@@ -81,6 +81,8 @@ func ClientSync(client RPCClient) {
 		}
 
 	}
+	client.GetFileInfoMap(succ, serverFileInfoMap)
+	PrintMetaMap(*serverFileInfoMap)
 	//==============================
 
 	//Update the hashlist of corresponding file, rewrite index.txt
@@ -127,6 +129,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
+	fileNameUpdate = make(map[string]bool)
 
 
 	//file walk of base direcotry
@@ -143,9 +146,11 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 		if path == indexPath { //ignore index.txt
 			return nil
 		}
+
+		path = path[len(root)+1:]
 		//get the current hashlist of the file
 		current_hashlist := GetFileHashList(path,client.BlockSize,client)
-		
+
 		//check whether filename exist in index.txt
 		if fmdata, ok := indexMap[path]; ok {
 			
@@ -161,8 +166,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 			
 		}else{ // if not exist in index.txt, it is a new file, append new line to index.txt
 			fileNameUpdate[path] =true
-			indexMap[path] = FileMetaData{path[len(root)+1:], 1, current_hashlist} 
-			
+			indexMap[path] = FileMetaData{path, 1, current_hashlist} 
 			
 		}
 		
@@ -194,20 +198,33 @@ func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpd
 
 	var lines []string
 
-	if len(fileUpdate) != 0 {
-		lines = strings.Split(string(input), "\n")
 	
+	
+	
+	if len(input) != 0 {
+		lines = strings.Split(string(input), "\n")
 		for i, line := range lines{ //check whether each line contains file that need updates
 			for fileName,_ := range fileUpdate{
 				if strings.Contains(line, fileName){
 					fmdata := indexMap[fileName] 
-					data := []string {fmdata.Filename,strconv.Itoa(fmdata.Version),strings.Join(fmdata.BlockHashList," ")}
-					lines[i] = strings.Join(data,",") //rejoin the string
+					data := fmdata.Filename+","+strconv.Itoa(fmdata.Version)+","+strings.Join(fmdata.BlockHashList," ")
+					lines[i] = data //rejoin the string
+					delete(fileUpdate, fileName)
+				}
 			}
 		}
 	}
+	
 
+	// if fileUpdate still has keys, meaning there are new file
+	for fileName, _ := range fileUpdate{
+		fmdata := indexMap[fileName] 
+		data := fmdata.Filename+","+strconv.Itoa(fmdata.Version)+","+strings.Join(fmdata.BlockHashList," ")
+		lines = append(lines,data)
 	}
+
+
+	
 
 	output := strings.Join(lines,"\n")
 	err = ioutil.WriteFile(indexPath,[]byte(output),0644) // rewrite index.txt
@@ -315,6 +332,18 @@ func PrintMetaMap(metaMap map[string]FileMetaData) {
 	}
 
 	fmt.Println("---------END PRINT MAP--------")
+
+}
+
+func PrintIndexMap(metaMap map[string]FileMetaData) {
+
+	fmt.Println("==========BEGIN Index MAP=========")
+
+	for _, filemeta := range metaMap {
+		fmt.Println("\t", filemeta.Filename, filemeta.Version, filemeta.BlockHashList)
+	}
+
+	fmt.Println("==========END Index MAP=========")
 
 }
 
