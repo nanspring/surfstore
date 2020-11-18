@@ -39,20 +39,48 @@ func ClientSync(client RPCClient) {
 	//=========TODO=================
 
 	// Compare local index with remote server index
-	// for file_name, file_meta_data := range *serverFileInfoMap {
-	// 	if val, ok := localIndexMap[file_name]; !ok { //if file does not exist in local index, server has new file :)
+	for file_name, file_meta_data := range *serverFileInfoMap {
+		if _, ok := localIndexMap[file_name]; !ok { //if file does not exist in local index, server has new file :)
 			//download file block from server
-			//hashlist := file_meta_data.BlockHashList
+			hashlist := file_meta_data.BlockHashList
+			var blockList []*Block
+			// ====TODO====
+			// ==Get block list from server by looping hashlist
+			DownloadBlock(hashlist, blockList, client)
+			// ==reorganized downloaded blocks into file into local dir
+			JoinBlockAndDownloadFile(blockList, file_name, client)
 
-			//====TODO====
-			//==download block from server by looping hashlist
-			//==reorganized block into file into local dir
-			//==update localIndexMap of the newly downloaded file
-	// 	}
-	// }
-	// download new file from server that does not exist in client
+			// ==update localIndexMap of the newly downloaded file
+			localIndexMap[file_name] = FileMetaData{file_name,file_meta_data.Version,hashlist}
+			fileNameUpdate[file_name] = true
+		}
+	}
+
 	// client upload new file to server, if fail, delete filename in fileNameUpdate or newFileName
+	for name,_ := range fileNameUpdate{
+		var latestVersion = new(int)
+		local_fmData := localIndexMap[name]
+		err := client.UpdateFile(&local_fmData, latestVersion)
+		if err != nil {
+			// if error, meaning version mismatch. Download the file from server
+			file_meta_data := (*serverFileInfoMap)[name]
+			hashlist := file_meta_data.BlockHashList
+			var blockList []*Block
+			DownloadBlock(hashlist, blockList,client)
+			JoinBlockAndDownloadFile(blockList, name, client)
+			localIndexMap[name] = FileMetaData{name,*latestVersion,hashlist}
 
+		}else{
+			// upload to block of file to server
+			blockList := GetFileBlock(name, client)
+
+			for _, block := range blockList{
+				err = client.PutBlock(block, succ)
+				PrintError(err, "Put Block")
+		}
+		}
+
+	}
 	//==============================
 
 	//Update the hashlist of corresponding file, rewrite index.txt
@@ -60,6 +88,17 @@ func ClientSync(client RPCClient) {
 	
 	
 
+}
+/*
+Download block
+*/
+func DownloadBlock(hashList []string, blockList []*Block, client RPCClient){
+	for _,blockHash := range hashList{
+		block := new(Block)
+		err := client.GetBlock(blockHash, block)
+		PrintError(err,"Get Block")
+		blockList = append(blockList, block)
+	}
 }
 
 /*
@@ -84,7 +123,7 @@ func CreateIndex(client RPCClient){
 3. compare with local index file
 4. return fileNames that need update
 */
-func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fileNameUpdate []string){
+func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fileNameUpdate map[string]bool){
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
@@ -105,7 +144,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 			return nil
 		}
 		//get the current hashlist of the file
-		current_hashlist := GetFileHashList(path,client.BlockSize)
+		current_hashlist := GetFileHashList(path,client.BlockSize,client)
 		
 		//check whether filename exist in index.txt
 		if fmdata, ok := indexMap[path]; ok {
@@ -117,12 +156,13 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 				fmdata.BlockHashList = current_hashlist
 				fmdata.Version = fmdata.Version+1 //update version+1
 				indexMap[path] = fmdata
-				fileNameUpdate = append(fileNameUpdate,path)
+				fileNameUpdate[path] = true
 			}
-
+			
 		}else{ // if not exist in index.txt, it is a new file, append new line to index.txt
-			fileNameUpdate = append(fileNameUpdate,path)
-			indexMap[path] = FileMetaData{path, 1, current_hashlist} 
+			fileNameUpdate[path] =true
+			indexMap[path] = FileMetaData{path[len(root)+1:], 1, current_hashlist} 
+			
 			
 		}
 		
@@ -141,7 +181,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 Update hashlist of files in index.txt that need to be changed
 Append new file in index.txt created by client
 */
-func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpdate []string){
+func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpdate map[string]bool){
 	if len(fileUpdate) == 0{
 		return
 	}
@@ -158,7 +198,7 @@ func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpd
 		lines = strings.Split(string(input), "\n")
 	
 		for i, line := range lines{ //check whether each line contains file that need updates
-			for _,fileName := range fileUpdate{
+			for fileName,_ := range fileUpdate{
 				if strings.Contains(line, fileName){
 					fmdata := indexMap[fileName] 
 					data := []string {fmdata.Filename,strconv.Itoa(fmdata.Version),strings.Join(fmdata.BlockHashList," ")}
@@ -181,8 +221,8 @@ func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpd
 /*
 calculate file hashlist
 */
-func GetFileHashList(path string, blockSize int) (hashList []string){
-	byteFile, err := ioutil.ReadFile(path) //this return a byte array
+func GetFileHashList(path string, blockSize int, client RPCClient) (hashList []string){
+	byteFile, err := ioutil.ReadFile(client.BaseDir + "/" + path) //this return a byte array
 	if err != nil{
 		log.Println("error reading file: ",path,err)
 		return hashList
@@ -203,6 +243,35 @@ func GetFileHashList(path string, blockSize int) (hashList []string){
 	}
 
 	return hashList
+}
+
+/*
+Get block of file to be ready to upload to server
+*/
+func GetFileBlock(name string, client RPCClient)(blockList []Block){
+	byteFile, err := ioutil.ReadFile(client.BaseDir + "/" + name) //this return a byte array
+	if err != nil{
+		log.Println("error reading file: ",name,err)
+		return blockList
+	}
+
+	blockSize := client.BlockSize
+	size := len(byteFile)/blockSize+1
+	block := make([]byte,0,size)
+
+	for i := 0; i < size; i++{
+
+		if(i == size-1){ //if this is the last chunk, dont split the file
+			block = byteFile[:len(byteFile)]
+		}else{
+			block, byteFile = byteFile[:blockSize], byteFile[blockSize:]
+		}
+		
+		blockList = append(blockList,Block{block,len(block)})
+	}
+
+	return blockList
+
 }
 
 func Hash256(block []byte) (hash_code string){
@@ -249,6 +318,33 @@ func PrintMetaMap(metaMap map[string]FileMetaData) {
 
 }
 
+func JoinBlockAndDownloadFile(blockList []*Block, filename string, client RPCClient){
+	// join blocks of file
+	var result []byte
+	for _, block := range blockList{
+		result = append(result, ((*block).BlockData)...)
+	}
+
+	//create file
+	path := client.BaseDir + "/" + filename
+	_, err := os.Stat(path)
+	if os.IsNotExist(err){
+		file, err := os.Create(path)
+		if err != nil{
+			log.Println("create index file error: ",err)
+			return
+		}
+		defer file.Close()
+	}
+	err = ioutil.WriteFile(path,result,0644)
+}
+
 func assertEq(test []string, ans []string) bool {
     return reflect.DeepEqual(test, ans)
+}
+
+func PrintError(err error, msg string){
+	if err != nil{
+		log.Println(msg, " error: ",err)
+	}
 }
