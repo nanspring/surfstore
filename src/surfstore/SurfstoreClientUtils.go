@@ -73,7 +73,6 @@ func ClientSync(client RPCClient) {
 		}else{
 			// upload to block of file to server
 			blockList := GetFileBlock(name, client)
-
 			for _, block := range blockList{
 				err = client.PutBlock(block, succ)
 				PrintError(err, "Put Block")

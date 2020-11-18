@@ -68,14 +68,13 @@ func (surfClient *RPCClient) HasBlocks(blockHashesIn []string, blockHashesOut *[
 
 func (surfClient *RPCClient) GetFileInfoMap(succ *bool, serverFileInfoMap *map[string]FileMetaData) error {
 	//panic("todo")
-
 	conn, e := rpc.DialHTTP("tcp", surfClient.ServerAddr)
 	if e != nil {
 		return e
 	}
 
 	// perform the call
-	e = conn.Call("Surfstore.GeFileInfoMap", succ, serverFileInfoMap)
+	e = conn.Call("Surfstore.GetFileInfoMap", succ, serverFileInfoMap)
 	if e != nil {
 		conn.Close()
 		return e

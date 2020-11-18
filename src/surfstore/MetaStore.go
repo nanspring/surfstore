@@ -1,12 +1,19 @@
 package surfstore
 
+import(
+	"errors"
+	"log"
+)
 type MetaStore struct {
 	FileMetaMap map[string]FileMetaData
 }
 
 func (m *MetaStore) GetFileInfoMap(_ignore *bool, serverFileInfoMap *map[string]FileMetaData) error {
 	//panic("todo")
-	serverFileInfoMap = &m.FileMetaMap
+	for k,v := range m.FileMetaMap{
+		(*serverFileInfoMap)[k] = v
+	}
+	log.Println("Print getFileInfoMap")
 	return nil
 }
 
@@ -15,11 +22,13 @@ func (m *MetaStore) UpdateFile(fileMetaData *FileMetaData, latestVersion *int) (
 	fileName := fileMetaData.Filename
 	newVersion := fileMetaData.Version
 	currentVersion := m.FileMetaMap[fileName].Version
+	log.Println("UpdateFile: ",fileName,newVersion)
 	if newVersion != currentVersion+1 {
-		latestVersion = &currentVersion
+		*latestVersion = currentVersion
+		return errors.New("version mismatch")
 	}else{
-		latestVersion = &newVersion
-		m.FileMetaMap[fileName] = *fileMetaData
+		*latestVersion = newVersion
+		m.FileMetaMap[fileName] = FileMetaData{fileName,newVersion,fileMetaData.BlockHashList}
 	}
 	return nil
 }
