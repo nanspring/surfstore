@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"errors"
+	"fmt"
 )
 
 type Server struct {
@@ -72,7 +73,7 @@ func ServeSurfstoreServer(hostAddr string, surfstoreServer Server) error {
 	// not use a go routine for http.Serve
 	http.Serve(l,nil)
 
-	// fmt.Print("Press enter key to end server")
-	// fmt.Scanln()
-	// return errors.New("server stop")
+	fmt.Print("Press enter key to end server")
+	fmt.Scanln()
+	return errors.New("server stop")
 }
