@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"errors"
-	"fmt"
 )
 
 type Server struct {
