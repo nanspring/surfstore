@@ -27,7 +27,7 @@ func ClientSync(client RPCClient) {
 	GetIndexMap(&localIndexMap, indexPath) // read index.txt to map
 
 	//scan local file, check for any file modification or new file 
-	fileNameUpdate := ScanCheckLocalIndex(localIndexMap,client)
+	fileNameUpdate := ScanCheckLocalIndex(&localIndexMap,client)
 	log.Println("fileNameUpdate: ",fileNameUpdate)
 
 
@@ -62,6 +62,7 @@ func ClientSync(client RPCClient) {
 		local_fmData := localIndexMap[name]
 		err := client.UpdateFile(&local_fmData, latestVersion)
 		if err != nil {
+			// might need to check error type
 			// if error, meaning version mismatch. Download the file from server
 			file_meta_data := (*serverFileInfoMap)[name]
 			hashlist := file_meta_data.BlockHashList
@@ -124,7 +125,7 @@ func CreateIndex(client RPCClient){
 3. compare with local index file
 4. return fileNames that need update
 */
-func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fileNameUpdate map[string]bool){
+func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, client RPCClient) (fileNameUpdate map[string]bool){
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
@@ -151,7 +152,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 		current_hashlist := GetFileHashList(path,client.BlockSize,client)
 
 		//check whether filename exist in index.txt
-		if fmdata, ok := indexMap[path]; ok {
+		if fmdata, ok := (*indexMap)[path]; ok {
 			
 			
 			//if different, update indexMap and append filename that need to be changed
@@ -159,13 +160,13 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 				log.Println("hashlist different")
 				fmdata.BlockHashList = current_hashlist
 				fmdata.Version = fmdata.Version+1 //update version+1
-				indexMap[path] = fmdata
+				(*indexMap)[path] = fmdata
 				fileNameUpdate[path] = true
 			}
 			
 		}else{ // if not exist in index.txt, it is a new file, append new line to index.txt
 			fileNameUpdate[path] =true
-			indexMap[path] = FileMetaData{path, 1, current_hashlist} 
+			(*indexMap)[path] = FileMetaData{path, 1, current_hashlist} 
 			
 		}
 		
