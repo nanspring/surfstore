@@ -37,23 +37,17 @@ func ClientSync(client RPCClient) {
 	client.GetFileInfoMap(succ, serverFileInfoMap) // rpc call, get index map from server
 	PrintMetaMap(*serverFileInfoMap)
 
-	//=========TODO=================
-
 	// Compare local index with remote server index
 	for file_name, file_meta_data := range *serverFileInfoMap {
 		if _, ok := localIndexMap[file_name]; !ok { //if file does not exist in local index, server has new file :)
 			//download file block from server
 			hashlist := file_meta_data.BlockHashList
-			var blockList []*Block
-			// ====TODO====
-			// ==Get block list from server by looping hashlist
-			DownloadBlock(hashlist, blockList, client)
-			// ==reorganized downloaded blocks into file into local dir
+			var blockList []Block
+			DownloadBlock(hashlist, &blockList, client)
+			log.Println("blockList: ",blockList)
 			JoinBlockAndDownloadFile(blockList, file_name, client)
-
-			// ==update localIndexMap of the newly downloaded file
-			localIndexMap[file_name] = FileMetaData{file_name,file_meta_data.Version,hashlist}
-			fileNameUpdate[file_name] = true
+			
+			
 		}
 	}
 
@@ -66,8 +60,8 @@ func ClientSync(client RPCClient) {
 			// if error, meaning version mismatch. Download the file from server
 			file_meta_data := (*serverFileInfoMap)[name]
 			hashlist := file_meta_data.BlockHashList
-			var blockList []*Block
-			DownloadBlock(hashlist, blockList,client)
+			var blockList []Block
+			DownloadBlock(hashlist, &blockList,client)
 			JoinBlockAndDownloadFile(blockList, name, client)
 			localIndexMap[name] = FileMetaData{name,*latestVersion,hashlist}
 
@@ -75,6 +69,7 @@ func ClientSync(client RPCClient) {
 			// upload to block of file to server
 			blockList := GetFileBlock(name, client)
 			for _, block := range blockList{
+				log.Println("block data: ",block.BlockData)
 				err = client.PutBlock(block, succ)
 				PrintError(err, "Put Block")
 		}
@@ -83,7 +78,6 @@ func ClientSync(client RPCClient) {
 	}
 	client.GetFileInfoMap(succ, serverFileInfoMap)
 	PrintMetaMap(*serverFileInfoMap)
-	//==============================
 
 	//Update the hashlist of corresponding file, rewrite index.txt
 	UpdateIndexFile(indexPath, localIndexMap, fileNameUpdate)
@@ -94,12 +88,13 @@ func ClientSync(client RPCClient) {
 /*
 Download block
 */
-func DownloadBlock(hashList []string, blockList []*Block, client RPCClient){
+func DownloadBlock(hashList []string, blockList *[]Block, client RPCClient){
 	for _,blockHash := range hashList{
-		block := new(Block)
-		err := client.GetBlock(blockHash, block)
+		var block Block
+		err := client.GetBlock(blockHash, &block)
+		log.Println("downloaded block data: ",block.BlockData)
 		PrintError(err,"Get Block")
-		blockList = append(blockList, block)
+		(*blockList) = append(*blockList, block)
 	}
 }
 
@@ -358,11 +353,12 @@ func PrintIndexMap(metaMap map[string]FileMetaData) {
 
 }
 
-func JoinBlockAndDownloadFile(blockList []*Block, filename string, client RPCClient){
+
+func JoinBlockAndDownloadFile(blockList []Block, filename string, client RPCClient){
 	// join blocks of file
 	var result []byte
 	for _, block := range blockList{
-		result = append(result, ((*block).BlockData)...)
+		result = append(result, (block.BlockData)...)
 	}
 
 	//create file
