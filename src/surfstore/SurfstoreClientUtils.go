@@ -21,13 +21,14 @@ func ClientSync(client RPCClient) {
 	//panic("todo")
 	indexPath := client.BaseDir + "/index.txt"
 	localIndexMap := make(map[string]FileMetaData)
+	fileDeleteMap := make(map[string]bool)
 
 	//create index.txt if not exist
 	CreateIndex(client)
-	GetIndexMap(&localIndexMap, indexPath) // read index.txt to map
+	GetIndexMap(&localIndexMap, &fileDeleteMap, indexPath) // read index.txt to map
 
 	//scan local file, check for any file modification or new file 
-	fileNameUpdate := ScanCheckLocalIndex(localIndexMap,client)
+	fileNameUpdate := ScanCheckLocalIndex(localIndexMap, fileDeleteMap ,client)
 	log.Println("fileNameUpdate: ",fileNameUpdate)
 
 
@@ -124,7 +125,7 @@ func CreateIndex(client RPCClient){
 3. compare with local index file
 4. return fileNames that need update
 */
-func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fileNameUpdate map[string]bool){
+func ScanCheckLocalIndex(indexMap map[string]FileMetaData,fileDeleteMap map[string]bool, client RPCClient) (fileNameUpdate map[string]bool){
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
@@ -152,7 +153,7 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 
 		//check whether filename exist in index.txt
 		if fmdata, ok := indexMap[path]; ok {
-			
+			delete(fileDeleteMap, path) // remove key in delete map, meaning it is not deleted
 			
 			//if different, update indexMap and append filename that need to be changed
 			if !assertEq(fmdata.BlockHashList,current_hashlist){ 
@@ -171,6 +172,16 @@ func ScanCheckLocalIndex(indexMap map[string]FileMetaData, client RPCClient) (fi
 		
 		return nil
 	})
+
+	// the remaining key in fileDeleteMap is the file that is deleted by client
+	for fileName, _ := range fileDeleteMap{
+		fmdata := indexMap[fileName]
+		fmdata.Version = fmdata.Version+1
+		fmdata.BlockHashList = []string{"0"}
+		indexMap[fileName] = fmdata
+		fileNameUpdate[fileName] = true
+	}
+
 	if err != nil {
 		log.Println(err)
 	}
@@ -300,7 +311,7 @@ func Hash256(block []byte) (hash_code string){
 /*
 Read index.txt to a map
 */
-func GetIndexMap(indexMap *map[string]FileMetaData, indexPath string){
+func GetIndexMap(indexMap *map[string]FileMetaData, fileDeleteMap *map[string]bool, indexPath string){
 	file, err := os.Open(indexPath)
 	if err != nil {
 		log.Println("info file read error: ",err)
@@ -312,6 +323,7 @@ func GetIndexMap(indexMap *map[string]FileMetaData, indexPath string){
 		version,_ := strconv.Atoi(line[1])
 		fmdata := FileMetaData{line[0],version,strings.Split(line[2]," ")}
 		(*indexMap)[line[0]] = fmdata 
+		(*fileDeleteMap)[line[0]] = false
 	}
 	if err := scanner.Err(); err != nil{
 		log.Println("infomap scann error: ",err)
