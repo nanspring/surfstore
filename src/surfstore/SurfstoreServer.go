@@ -69,10 +69,9 @@ func ServeSurfstoreServer(hostAddr string, surfstoreServer Server) error {
 		log.Println("listen error: ",err)
 		return errors.New("listen error")
 	}
-	go http.Serve(l,nil)
+	http.Serve(l,nil)
 
 // 	fmt.Print("Press enter key to end server")
 // 	fmt.Scanln()
 // 	return errors.New("server stop")
-	return nil
 }
