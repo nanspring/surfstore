@@ -61,8 +61,7 @@ func ClientSync(client RPCClient) {
 		var latestVersion = new(int)
 		local_fmData := localIndexMap[name]
 		err := client.UpdateFile(&local_fmData, latestVersion)
-		if err != nil {
-			// might need to check error type
+		if err != nil || err.Error() == "version mismatch"{
 			// if error, meaning version mismatch. Download the file from server
 			file_meta_data := (*serverFileInfoMap)[name]
 			hashlist := file_meta_data.BlockHashList
