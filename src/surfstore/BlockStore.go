@@ -12,7 +12,9 @@ type BlockStore struct {
 func (bs *BlockStore) GetBlock(blockHash string, blockData *Block) error {
 	//panic("todo")
 	if block, ok := bs.BlockMap[blockHash] ; ok {
-		blockData = &block
+		blockData.BlockSize = block.BlockSize
+		blockData.BlockData = make([]byte, blockData.BlockSize)
+		copy(blockData.BlockData, block.BlockData)
 		return nil
 	}else{
 		return errors.New("Block does not exist")
