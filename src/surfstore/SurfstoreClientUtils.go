@@ -45,6 +45,8 @@ func ClientSync(client RPCClient) {
 			var blockList []Block
 			DownloadBlock(hashlist,  &blockList, client)
 			JoinBlockAndDownloadFile(&blockList, file_name, client)
+			localIndexMap[file_name] = FileMetaData{file_name,file_meta_data.Version,hashlist}	
+			fileNameUpdate[file_name] = true
 		}
 	}
 
@@ -61,7 +63,7 @@ func ClientSync(client RPCClient) {
 			var blockList []Block
 			DownloadBlock(hashlist, &blockList,client)
 			JoinBlockAndDownloadFile(&blockList, name, client)
-			localIndexMap[name] = FileMetaData{name,*latestVersion,hashlist}
+			localIndexMap[name] = FileMetaData{name, local_fmData.Version, hashlist}
 
 		}else{
 			// upload to block of file to server
@@ -73,8 +75,8 @@ func ClientSync(client RPCClient) {
 		}
 
 	}
-	client.GetFileInfoMap(succ, serverFileInfoMap)
-	PrintMetaMap(*serverFileInfoMap)
+	// client.GetFileInfoMap(succ, serverFileInfoMap)
+	// PrintMetaMap(*serverFileInfoMap)
 
 	//Update the hashlist of corresponding file, rewrite index.txt
 	UpdateIndexFile(indexPath, localIndexMap, fileNameUpdate)
@@ -208,7 +210,7 @@ func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpd
 		for i, line := range lines{ //check whether each line contains file that need updates
 			for fileName,_ := range fileUpdate{
 				if strings.Contains(line, fileName){
-					fmdata := indexMap[fileName] 
+					fmdata := indexMap[fileName]
 					data := fmdata.Filename+","+strconv.Itoa(fmdata.Version)+","+strings.Join(fmdata.BlockHashList," ")
 					lines[i] = data //rejoin the string
 					delete(fileUpdate, fileName)
