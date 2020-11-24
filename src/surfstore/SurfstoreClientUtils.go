@@ -42,9 +42,9 @@ func ClientSync(client RPCClient) {
 		if _, ok := localIndexMap[file_name]; !ok { //if file does not exist in local index, server has new file :)
 			//download file block from server
 			hashlist := file_meta_data.BlockHashList
-			var blockList []*Block
-			DownloadBlock(hashlist, blockList, client)
-			JoinBlockAndDownloadFile(blockList, file_name, client)
+			var blockList []Block
+			DownloadBlock(hashlist,  &blockList, client)
+			JoinBlockAndDownloadFile(&blockList, file_name, client)
 		}
 	}
 
@@ -53,13 +53,14 @@ func ClientSync(client RPCClient) {
 		var latestVersion = new(int)
 		local_fmData := localIndexMap[name]
 		err := client.UpdateFile(&local_fmData, latestVersion)
-		if err != nil || err.Error() == "version mismatch"{
+		if err != nil {
+			// todo || err.Error() == "version mismatch"
 			// if error, meaning version mismatch. Download the file from server
 			file_meta_data := (*serverFileInfoMap)[name]
 			hashlist := file_meta_data.BlockHashList
 			var blockList []Block
 			DownloadBlock(hashlist, &blockList,client)
-			JoinBlockAndDownloadFile(blockList, name, client)
+			JoinBlockAndDownloadFile(&blockList, name, client)
 			localIndexMap[name] = FileMetaData{name,*latestVersion,hashlist}
 
 		}else{
@@ -88,7 +89,6 @@ func DownloadBlock(hashList []string, blockList *[]Block, client RPCClient){
 	for _,blockHash := range hashList{
 		var block Block
 		err := client.GetBlock(blockHash, &block)
-		err := client.GetBlock(blockHash, block)
 		PrintError(err,"Get Block")
 		(*blockList) = append(*blockList, block)
 	}
@@ -166,10 +166,10 @@ func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, fileDeleteMap map[st
 
 	// the remaining key in fileDeleteMap is the file that is deleted by client
 	for fileName, _ := range fileDeleteMap{
-		fmdata := indexMap[fileName]
+		fmdata := (*indexMap)[fileName]
 		fmdata.Version = fmdata.Version+1
 		fmdata.BlockHashList = []string{"0"}
-		indexMap[fileName] = fmdata
+		(*indexMap)[fileName] = fmdata
 		fileNameUpdate[fileName] = true
 	}
 
@@ -350,11 +350,11 @@ func PrintIndexMap(metaMap map[string]FileMetaData) {
 
 }
 
-func JoinBlockAndDownloadFile(blockList []Block, filename string, client RPCClient){
+func JoinBlockAndDownloadFile(blockList *[]Block, filename string, client RPCClient){
 	// join blocks of file
 	var result []byte
-	for _, block := range blockList{
-		result = append(result, (block.BlockData)...)
+	for _, block := range (*blockList){
+		result = append(result, ((block).BlockData)...)
 	}
 
 	//create file
