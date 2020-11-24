@@ -18,7 +18,7 @@ import (
 Implement the logic for a client syncing with the server here.
 */
 func ClientSync(client RPCClient) {
-	//panic("todo")
+	tombstone := "0"
 	indexPath := client.BaseDir + "/index.txt"
 	localIndexMap := make(map[string]FileMetaData)
 	fileDeleteMap := make(map[string]bool)
@@ -28,7 +28,7 @@ func ClientSync(client RPCClient) {
 	GetIndexMap(&localIndexMap, &fileDeleteMap, indexPath) // read index.txt to map
 
 	//scan local file, check for any file modification or new file 
-	fileNameUpdate := ScanCheckLocalIndex(&localIndexMap, fileDeleteMap, client)
+	fileNameUpdate := ScanCheckLocalIndex(&localIndexMap, &fileDeleteMap, client)
 	log.Println("fileNameUpdate: ",fileNameUpdate)
 
 
@@ -43,11 +43,20 @@ func ClientSync(client RPCClient) {
 			//download file block from server
 			hashlist := file_meta_data.BlockHashList
 			var blockList []Block
-			DownloadBlock(hashlist,  &blockList, client)
-			JoinBlockAndDownloadFile(&blockList, file_name, client)
+			if strings.Join(hashlist," ") != tombstone{
+				DownloadBlock(hashlist,  &blockList, client)
+				JoinBlockAndDownloadFile(&blockList, file_name, client)
+			}
 			localIndexMap[file_name] = FileMetaData{file_name,file_meta_data.Version,hashlist}	
 			fileNameUpdate[file_name] = true
-		}
+		}else{
+			localVersion := localIndexMap[file_name].Version
+			serverVersion := file_meta_data.Version
+			if localVersion < serverVersion{
+				fileNameUpdate[file_name] = true
+			}
+		}	
+		// check localVersion and ServerVersion
 	}
 
 	// client upload new file to server, if fail, download the file from server and update indexMap
@@ -56,15 +65,28 @@ func ClientSync(client RPCClient) {
 		local_fmData := localIndexMap[name]
 		err := client.UpdateFile(&local_fmData, latestVersion)
 		if err != nil {
-			// todo || err.Error() == "version mismatch"
-			// if error, meaning version mismatch. Download the file from server
-			file_meta_data := (*serverFileInfoMap)[name]
-			hashlist := file_meta_data.BlockHashList
-			var blockList []Block
-			DownloadBlock(hashlist, &blockList,client)
-			JoinBlockAndDownloadFile(&blockList, name, client)
-			localIndexMap[name] = FileMetaData{name, local_fmData.Version, hashlist}
-
+			// if error version mismatch. Download the file from server
+			if err.Error() == "version mismatch"{
+				file_meta_data := (*serverFileInfoMap)[name]
+				hashlist := file_meta_data.BlockHashList
+				var blockList []Block
+				if strings.Join(hashlist," ") != tombstone{
+					DownloadBlock(hashlist, &blockList,client)
+					//will do the deletion automatically as the normal file update
+					JoinBlockAndDownloadFile(&blockList, name, client) 
+				}else{
+					path := client.BaseDir + "/" + name
+					if _, err := os.Stat(path); err == nil {
+						e := os.Remove(path)
+						if e != nil { 
+							PrintError(e, "delete file failed")
+						} 
+					}
+				}
+				localIndexMap[name] = FileMetaData{name, file_meta_data.Version, hashlist}
+			}else{
+				PrintError(err, "Client RPC UpdateFile error")
+			}
 		}else{
 			// upload to block of file to server
 			blockList := GetFileBlock(name, client)
@@ -118,7 +140,7 @@ func CreateIndex(client RPCClient){
 3. compare with local index file
 4. return fileNames that need update
 */
-func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, fileDeleteMap map[string]bool, client RPCClient) (fileNameUpdate map[string]bool){
+func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, fileDeleteMap *map[string]bool, client RPCClient) (fileNameUpdate map[string]bool){
 
 	root := client.BaseDir
 	indexPath := root + "/index.txt"
@@ -146,7 +168,7 @@ func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, fileDeleteMap map[st
 
 		//check whether filename exist in index.txt
 		if fmdata, ok := (*indexMap)[path]; ok {
-			delete(fileDeleteMap, path) // todo, check fmdata.tombstone
+			delete((*fileDeleteMap), path) // find those in indexMap but not in its base dir.
 			
 			//if different, update indexMap and append filename that need to be changed
 			if !assertEq(fmdata.BlockHashList,current_hashlist){ 
@@ -167,7 +189,7 @@ func ScanCheckLocalIndex(indexMap *map[string]FileMetaData, fileDeleteMap map[st
 	})
 
 	// the remaining key in fileDeleteMap is the file that is deleted by client
-	for fileName, _ := range fileDeleteMap{
+	for fileName, _ := range (*fileDeleteMap){
 		fmdata := (*indexMap)[fileName]
 		fmdata.Version = fmdata.Version+1
 		fmdata.BlockHashList = []string{"0"}
@@ -243,7 +265,13 @@ func UpdateIndexFile(indexPath string, indexMap map[string]FileMetaData, fileUpd
 calculate file hashlist
 */
 func GetFileHashList(path string, blockSize int, client RPCClient) (hashList []string){
-	byteFile, err := ioutil.ReadFile(client.BaseDir + "/" + path) //this return a byte array
+	file_path := client.BaseDir + "/" + path
+	_, err := os.Stat(file_path)
+	if os.IsNotExist(err){
+		log.Println("get hash list of deleted file: ", path)
+		return hashList
+	}
+	byteFile, err := ioutil.ReadFile(file_path) //this return a byte array
 	if err != nil{
 		log.Println("error reading file: ",path,err)
 		return hashList
@@ -270,12 +298,16 @@ func GetFileHashList(path string, blockSize int, client RPCClient) (hashList []s
 Get block of file to be ready to upload to server
 */
 func GetFileBlock(name string, client RPCClient)(blockList []Block){
-	byteFile, err := ioutil.ReadFile(client.BaseDir + "/" + name) //this return a byte array
-	if err != nil{
-		log.Println("error reading file: ",name,err)
+	path := client.BaseDir + "/" + name
+	_, err := os.Stat(path)
+	if os.IsNotExist(err){
+		log.Println("get block of deleted file: ",name)
 		return blockList
 	}
-
+	byteFile, err := ioutil.ReadFile(path) //this return a byte array
+	if err != nil{
+		log.Println("error reading file: ",path,err)
+	}
 	blockSize := client.BlockSize
 	size := len(byteFile)/blockSize+1
 	block := make([]byte,0,size)
@@ -317,7 +349,10 @@ func GetIndexMap(indexMap *map[string]FileMetaData, fileDeleteMap *map[string]bo
 		version,_ := strconv.Atoi(line[1])
 		fmdata := FileMetaData{line[0],version,strings.Split(line[2]," ")}
 		(*indexMap)[line[0]] = fmdata 
-		(*fileDeleteMap)[line[0]] = false //todo, not know the meaning
+		tombstone := "0"
+		if strings.Join(fmdata.BlockHashList," ") != tombstone {
+			(*fileDeleteMap)[line[0]] = false // only check those file not been deleted
+		}
 	}
 	if err := scanner.Err(); err != nil{
 		log.Println("infomap scann error: ",err)
