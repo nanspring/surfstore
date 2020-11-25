@@ -29,7 +29,7 @@ func ClientSync(client RPCClient) {
 
 	//scan local file, check for any file modification or new file 
 	fileNameUpdate := ScanCheckLocalIndex(&localIndexMap, &fileDeleteMap, client)
-	log.Println("fileNameUpdate: ",fileNameUpdate)
+	// log.Println("fileNameUpdate: ",fileNameUpdate)
 
 
 	serverFileInfoMap := new(map[string]FileMetaData) //new return a pointer

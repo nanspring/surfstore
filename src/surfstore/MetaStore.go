@@ -13,7 +13,7 @@ func (m *MetaStore) GetFileInfoMap(_ignore *bool, serverFileInfoMap *map[string]
 	for k,v := range m.FileMetaMap{
 		(*serverFileInfoMap)[k] = v
 	}
-	log.Println("Print getFileInfoMap")
+	// log.Println("Print getFileInfoMap")
 	return nil
 }
 
