@@ -35,7 +35,7 @@ func ClientSync(client RPCClient) {
 	serverFileInfoMap := new(map[string]FileMetaData) //new return a pointer
 	succ := new(bool)
 	client.GetFileInfoMap(succ, serverFileInfoMap) // rpc call, get index map from server
-	PrintMetaMap(*serverFileInfoMap)
+	// PrintMetaMap(*serverFileInfoMap)
 
 	// Compare local index with remote server index
 	for file_name, file_meta_data := range *serverFileInfoMap {
